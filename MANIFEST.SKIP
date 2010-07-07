@@ -1,0 +1,15 @@
+^_build
+^Build$
+^blib
+~$
+\.bak$
+^MANIFEST\.SKIP$
+\.swp
+\.tdy
+\.tar\.gz
+Devel-FastTrace-.*
+^\.git
+^lib/.*\.c$
+^lib/.*\.o$
+^.ignore
+^ppport.h$
