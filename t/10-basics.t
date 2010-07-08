@@ -8,6 +8,7 @@ use Test::More tests => 2;
 
 use Carp ();
 use Devel::FastTrace ();
+use YAML;
 
 sub buz {
 	my ($lcarp, $ldft) = (Carp::longmess("Error"), Devel::FastTrace::longmess("Error"));

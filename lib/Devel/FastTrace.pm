@@ -1,14 +1,31 @@
 package Devel::FastTrace;
 
+use 5.006;
 use strict;
 use warnings;
 our $VERSION = '0.001';
 
 use XSLoader;
 use Exporter 5.57 'import';
-our @EXPORT_OK = qw/stack_trace/;
-
+our @EXPORT_OK = qw/stack_info succumb all_trace/;
 XSLoader::load(__PACKAGE__, $VERSION);
+
+use Devel::FastTrace::Info;
+use Devel::FastTrace::Row;
+
+#These are just proofs of concept
+
+sub shortmess {
+	my $message = shift;
+	my $info    = stack_info(1);
+	return $info->shortmess($message);
+}
+
+sub longmess {
+	my $message = shift;
+	my $info    = stack_info(1);
+	return $info->longmess($message);
+}
 
 1;    # End of Devel::FastTrace
 
@@ -28,19 +45,15 @@ Perhaps a little code snippet.
 
     use Devel::FastTrace;
 
-    my $foo = Devel::FastTrace->new();
-    ...
+=head1 SUBROUTINES
 
-=head1 EXPORT
+=head2 stack_info
 
-A list of functions that can be exported.  You can delete this section
-if you don't export anything, such as for a purely object-oriented module.
+=head2 succumb
 
-=head1 SUBROUTINES/METHODS
+=head2 all_trace
 
-=head2 shortmess
-
-=head2 longmess
+=head2 previous_error
 
 =head1 AUTHOR
 

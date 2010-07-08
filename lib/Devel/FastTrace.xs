@@ -3,54 +3,91 @@
 #include <perl.h>
 #include <XSUB.h>
 
-SV*
-S_longmess(pTHX_ SV* message) {
-	I32 index;
-	SV* retval = Perl_newSVpvf(aTHX_ "%s at %s line %d\n", SvPV_nolen(message), OutCopFILE(cxstack[cxstack_ix].blk_oldcop), CopLINE(cxstack[cxstack_ix].blk_oldcop));
-	for (index = cxstack_ix - 1; index > 0; index--) {
+SV* S_stack_info(pTHX_ IV skip) {
+	AV* ret = newAV();
+	I32 index = cxstack_ix;
+	HV* rowstash = gv_stashpv("Devel::FastTrace::Row", GV_ADD);
+	if (skip > 0)
+		index -= skip;
+	for (; index > 0; index--) {
 		const PERL_CONTEXT* cx = cxstack + index;
+		AV* row = newAV();
+		av_push(row, newSVpv(CopSTASHPV(cx->blk_oldcop), 0));
 		if (CxTYPE(cx) == CXt_SUB || CxTYPE(cx) == CXt_FORMAT) {
 			GV * const cvgv = CvGV(cx->blk_sub.cv);
 			if (isGV(cvgv)) {
 				SV * const name = newSV(0);
 				gv_efullname3(name, cvgv, NULL);
-				Perl_sv_catpvf(aTHX_ retval, "\t%s()", SvPV_nolen(name));
-				SvREFCNT_dec(name);
+				av_push(row, name);
 			}
 			else {
-				sv_catpvn(retval, "\t(unknown)", 10);
+				av_push(row, newSVpvn("(unknown)", 9));
 			}
 		}
 		else if (CxTYPE(cx) == CXt_EVAL) {
-				sv_catpvn(retval, "\t(eval)", 10);
+				av_push(row, newSVpvn("(eval)", 6));
 		}
-		else
+		else {
+			SvREFCNT_dec((SV*)row);
 			continue;
-		Perl_sv_catpvf(aTHX_ retval, " called at %s line %d\n", OutCopFILE(cx->blk_oldcop), CopLINE(cx->blk_oldcop));
-	}
-	return retval;
-}
-#define longmess(message) S_longmess(aTHX_ message)
-
-SV* S_shortmess(pTHX_ SV* message) {
-	const char* current = CopSTASHPV(cxstack[cxstack_ix].blk_oldcop);
-	I32 index;
-	for (index = cxstack_ix - 1; index > 0; index--) {
-		if (CopSTASHPV(cxstack[index].blk_oldcop) != current) {
-			return newSVpvf("%s at %s line %d\n", SvPV_nolen(message), OutCopFILE(cxstack[index].blk_oldcop), CopLINE(cxstack[index].blk_oldcop));
 		}
+		av_push(row, newSVpv(OutCopFILE(cxstack[index].blk_oldcop), 0));
+		av_push(row, newSViv(CopLINE(cxstack[index].blk_oldcop)));
+
+		av_push(ret, sv_bless(newRV_noinc((SV*)row), rowstash));
 	}
-	if (index == 0)
-		return longmess(message);
+	HV* retstash = gv_stashpv("Devel::FastTrace::Info", 0);
+	return sv_bless(newRV_noinc((SV*)ret), retstash);
 }
-#define shortmess(message) S_shortmess(aTHX_ message)
+#define stack_info(skip) S_stack_info(aTHX_ skip)
+
+MAGIC* S_get_magic(pTHX_ SV* error) {
+	MAGIC* magic;
+	if (!SvROK(error) || SV_TYPE(SvRV(error)) != SVt_PVAV || !RMAGICAL(SvRV(error)) || (magic = mg_find(SvRV(error), PERL_MAGIC_ext)))
+		Perl_die(aTHX_ "Invalid exception");
+	return magic;
+}
+#define get_magic(error) S_get_magic(aTHX_ error)
 
 MODULE = Devel::FastTrace  PACKAGE = Devel::FastTrace
 
 SV*
-shortmess(message)
+stack_info(skip = 0)
+	IV skip;
+
+void
+succumb(message)
 	SV* message;
+	CODE:
+		if (SvROK(message)) {
+			SV* errsv = get_sv("@", GV_ADD);
+			SV* oldvalue = newSVsv(errsv);
+			sv_magic(SvRV(message), stack_info(0), PERL_MAGIC_ext, (char*)oldvalue, HEf_SVKEY);
+			SvREFCNT_dec(oldvalue);
+			SvSetSV(errsv, message);
+			Perl_die(aTHX_ NULL);
+		}
+		else 
+			Perl_die(aTHX_ "%s", SvPV_nolen(message));
+
+void
+all_trace(error)
+	SV* error;
+	PREINIT:
+		MAGIC* magic;
+		int i;
+	PPCODE:
+		magic = get_magic(error);
+		AV* traces = (AV*)SvRV(magic->mg_obj);
+		for (i = 0; i <= av_len(traces); i++)
+			XPUSH(*av_fetch(traces, i, FALSE));
 
 SV*
-longmess(message)
-	SV* message;
+previous_error(error)
+	SV* error;
+	PREINIT:
+		MAGIC* magic;
+	CODE:
+		RETVAL = (SV*)magic->mg_ptr;
+	OUTPUT:
+		RETVAL
